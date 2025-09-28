@@ -1,0 +1,41 @@
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+CREATE OR REPLACE DATABASE AIRFLOWDB;
+USE DATABASE AIRFLOWDB;
+
+CREATE OR REPLACE SCHEMA BRONZE;
+CREATE OR REPLACE SCHEMA SILVER;
+CREATE OR REPLACE SCHEMA GOLD;
+
+//create storage account
+
+USE SCHEMA AIRFLOWDB.BRONZE;
+
+// integretion of storage with snowflake and AWS
+
+CREATE OR REPLACE STORAGE INTEGRATION AIRFLOW_S3_INT
+TYPE = EXTERNAL_STAGE
+STORAGE_PROVIDER = 'S3'
+ENABLED = TRUE
+STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::199816167359:role/snowflakeloadrole'
+STORAGE_ALLOWED_LOCATIONS = ('s3://dea-datastorage-airflowsep21');
+
+// get the inegration 
+DESCRIBE INTEGRATION AIRFLOW_S3_INT;
+
+// create a stage account so you can place data in snowflake to fetch data from AWS 
+
+CREATE OR REPLACE STAGE AIRFLOWDB.BRONZE.AIRFLOW_S3_STAGE
+STORAGE_INTEGRATION = AIRFLOW_S3_INT
+URL = 's3://dea-datastorage-airflowsep21';
+
+// check if it is connected or not by running command if it run sucessful that means connection is establised 
+
+ls @AIRFLOWDB.BRONZE.AIRFLOW_S3_STAGE;
+
+
+
+
+
+
+
