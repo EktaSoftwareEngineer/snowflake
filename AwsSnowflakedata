@@ -1,0 +1,228 @@
+//role, warehouse, database and schema
+
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+CREATE OR REPLACE DATABASE AWSSNOW;
+CREATE OR REPLACE SCHEMA MYAWSNOWSCEMA;
+
+// create new table 
+CREATE OR REPLACE TABLE USER(
+id INTEGER, 
+name VARCHAR(50),
+location VARCHAR(50),
+email VARCHAR(50)
+);
+
+// Create s3 storage and i am role
+CREATE OR REPLACE STORAGE INTEGRATION S3_INT
+    TYPE = EXTERNAL_STAGE
+    STORAGE_PROVIDER ='S3'
+    ENABLED = TRUE
+    STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::199816167359:role/snowpiperoleek'
+    STORAGE_ALLOWED_LOCATIONS =('s3://realtimeproject-data-bucketek/data/');
+    DESC INTEGRATION S3_INT;
+
+// describe the integration
+DESCRIBE INTEGRATION S3_INT;
+
+// create file formate
+CREATE OR REPLACE FILE FORMAT my_csv_format
+TYPE = 'CSV'
+FIELD_DELIMITER =','
+RECORD_DELIMITER = '\n'
+SKIP_HEADER =1;
+
+
+// create external stage 
+CREATE OR REPLACE STAGE my_s3_stage
+STORAGE_INTEGRATION = S3_INT
+URL= S3 bucket url from AWS
+ FILE_FORMAT ='my_csv_format';
+
+// Access the external stage
+list @my_s3_stage;
+
+// load the data 
+COPY INTO USER
+FROM my_s3_stage
+FILE_FORMAT =(FILE_NAME =my_csv_format);
+
+
+//CREATE OR REPLACE PIPE MYDB.PUBLIC.MYPIPE AUTO_INGEST =TRUE AS 
+ //   COPY INTO MYDB.PUBLIC.MYTABLE
+//    FROM @MYDB.PUBLIC.S3_STAGE
+//    FILE_FORMAT =(TYPE ='JSON');
+
+SELECT * FROM USER;
+
+//== Streams ===
+// this will create a standard stream  insert update and delete
+CREATE OR REPLACE stream standard_stream on TABLE USER;
+INSERT into USER values
+(1,'John','San Jose','john@sanjose.com'),
+(2,'Nick','Santa Barbara','Nick@santabarbara.com');
+SELECT * FROM standard_stream;
+INSERT into USER values
+(3,'Anna','Seattle','Anna@seattle.com');
+
+
+//append-only stream will have only update and deletion
+CREATE OR REPLACE stream append_stream on TABLE USER APPEND_ONLY = TRUE;
+SELECT * FROM append_stream;
+UPDATE USER  SET name= 'Jason' where id= 2;
+
+//Insert-only stream will have only insert
+INSERT into USER values
+(4,'Nisha','Simla','Nisha@simla.com');
+UPDATE USER  SET name= 'Ali' where id= 3;
+
+CREATE OR REPLACE TABLE USER_TARGET_Table(
+id INTEGER, 
+name VARCHAR(50),
+location VARCHAR(50),
+email VARCHAR(50)
+);
+
+SELECT * FROM USER_TARGET_Table;
+// How do we use stream on ETL 
+
+INSERT INTO USER_TARGET_Table
+SELECT id,name,location,email FROM append_stream;
+
+INSERT into USER values
+(5,'Lata','Mumbai','lata@mumbai.com');
+
+// Task is for schedulling the job it can be done by 2 ways CRON and NonCROn 
+//  Without TASK
+CREATE OR REPLACE TABLE TARGET_Table(
+id INTEGER, 
+name VARCHAR(50),
+created_date DATE
+);
+DROP table TARGET_table;
+
+INSERT INTO TARGET_Table Values
+(1, 'John', '2025-09-07'),
+(2, 'Mili', '2024-07-05');
+
+SELECT *FROM TARGET_TABLE;
+
+CREATE OR REPLACE TABLE TARGET2_Table2(
+id INTEGER, 
+name VARCHAR(50),
+created_date DATE,
+created_day VARCHAR,
+created_month VARCHAR,
+created_year VARCHAR
+);
+
+DROP table Source_Table;
+// Lets automate the task so that data is loaded automatically in target table 
+CREATE OR REPLACE TABLE Source_Table(
+id INTEGER, 
+name VARCHAR(50),
+created_date DATE
+);
+
+INSERT INTO Source_Table Values
+(1, 'John', '2025-09-07'),
+(2, 'Mili', '2024-07-05');
+
+SELECT * FROM Source_Table;
+
+CREATE OR REPLACE TABLE TARGET2_Table2(
+id INTEGER, 
+name VARCHAR(50),
+created_date DATE,
+created_day VARCHAR, 
+created_month VARCHAR, 
+created_year VARCHAR
+);
+Drop table TARGET2_TABLE2;
+SELECT * FROM TARGET2_Table2;
+
+CREATE OR REPLACE TASK my_task
+WAREHOUSE = COMPUTE_WH
+SCHEDULE = '1 MINUTE'
+AS
+INSERT INTO TARGET2_Table2
+SELECT a.id, 
+a.name,
+a.created_date, 
+DAY(a.created_date) as created_day, 
+MONTH(a.created_date) as created_month, 
+YEAR(a.created_date) as created_year
+FROM Source_Table a LEFT JOIN TARGET2_Table2 b
+ON a.id = b.id
+WHERE b.id is NULL;
+
+ DROP TASK my_task;
+SHOW TASKS;
+ALTER TASK my_task RESUME;
+
+ALTER TASK my_task SUSPEND;
+
+SELECT * from table(information_schema.TASK_HISTORY(TASK_NAME=>'my_task'));
+
+INSERT INTO Source_Table Values
+(3, 'Jalebi', '2025-09-08');
+INSERT INTO Source_Table Values
+(4, 'Sam', '2025-10-01');
+
+// data retention 
+
+
+SELECT * FROM TARGET2_Table2;
+
+CREATE OR REPLACE TABLE Drop_table(
+id INTEGER, 
+name VARCHAR(50)
+);
+INSERT INTO Drop_table VALUES
+(1, 'Sam'), 
+(2, 'Nick'),
+(3, 'Nisha'),
+(4, 'Sweta');
+SELECT * FROM DROP_TABLE;
+INSERT INTO Drop_table VALUES
+(5, 'Tam');
+DELETE FROM Drop_table WHERE id =5;
+SELECT * FROM DROP_TABLE AT(OFFSET => -60*2);
+// show table will show the time stamp
+SHOW TABLES;
+// it will show what was the state of the table at the time 
+SELECT * FROM DROP_TABLE AT(TIMESTAMP => '2025-09-08 11:43:30.757 -0700'::timestamp_tz );
+
+// BY querry id how to identify 
+SELECT * FROM DROP_TABLE BEFORE(STATEMENT => '01beebb4-0106-605f-0010-9ff70003d01a');
+
+// to restore that table data again use the following query
+CREATE OR REPLACE TABLE DROP_TABLE_CLONE AS
+SELECT * FROM DROP_TABLE BEFORE(STATEMENT => '01beebb4-0106-605f-0010-9ff70003d01a');
+
+TRUNCATE TABLE DROP_TABLE;
+
+//NOW INSTER into the old table clone table
+
+INSERT INTO DROP_TABLE
+SELECT * FROM DROP_TABLE_CLONE
+SELECT * FROM DROP_TABLE;
+// DROP the clone table
+DROP table DROP_TABLE_CLONE;
+
+
+//other ways to drop similiar for database and SCHema
+
+DROP TABLE DROP_TABLE;
+UNDROP TABLE DROP_TABLE;
+
+DROP SCHEMA MYAWSNOWSCEMA;
+UNDROP SCHEMA MYAWSNOWSCEMA;
+
+DROP DATABASE AWSSNOW;
+UNDROP DATABASE AWSSNOW;
+
+//Cloning of database
+CREATE OR REPLACE DATABASE test_db
+CLONE AWSSNOW;
+DROP DATABASE test_db;
