@@ -1,0 +1,68 @@
+// create role, warehouse and database
+
+
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+
+CREATE OR REPLACE DATABASE MYDB;
+
+
+// Create storage integration and role
+
+CREATE OR REPLACE STORAGE INTEGRATION S3_INT
+    TYPE = EXTERNAL_STAGE
+    STORAGE_PROVIDER ='S3'
+    ENABLED = TRUE
+    STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::199816167359:role/snowpiperoleek'
+    STORAGE_ALLOWED_LOCATIONS =('s3://realtimeproject-data-bucketek/data/');
+    
+  //describe the storage integration with S3  
+    DESC INTEGRATION S3_INT;
+
+    CREATE OR REPLACE STAGE MYDB.PUBLIC.S3_STAGE
+    STORAGE_INTEGRATION = S3_INT
+    URL ='s3://realtimeproject-data-bucketek/data/';
+
+    
+
+    ls @MYDB.PUBLIC.S3_STAGE;
+    MYDBSNOW
+
+    // This helps if there is any change of the datatype
+//CREATE OR REPLACE TABLE EVENT(EVENT VARIANT);
+
+    CREATE OR REPLACE TABLE MYDB.PUBLIC.MYTABLE
+    (
+    DATA VARIANT
+    
+    );
+
+
+   //create file formate
+   //CREATE OR REPLACE FILE FORMAT 'nameofFILEFORMATEwithjson' TYPE ='JSON'
+
+
+
+    // create a external s3 stage
+    CREATE OR REPLACE PIPE MYDB.PUBLIC.MYPIPE AUTO_INGEST =TRUE AS 
+    COPY INTO MYDB.PUBLIC.MYTABLE
+    FROM @MYDB.PUBLIC.S3_STAGE
+    FILE_FORMAT =(TYPE ='JSON');
+    
+    //SELECT THE STATUS OF PIPEby 
+
+    SELECT SYSTEM$PIPE_STATUS('MYPIPE')
+
+    USE SCHEMA MYDB.PUBLIC;
+    
+    //GET THE NOTIFICATION CHANNEL
+    SHOW PIPES;
+    
+    // get the data from the table
+    SELECT * FROM MYDB.PUBLIC.MYTABLE;
+
+
+    //------------Streams -----
+    
+
+    
