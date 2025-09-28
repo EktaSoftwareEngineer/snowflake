@@ -1,0 +1,386 @@
+MYDBSNOWUSE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+CREATE OR REPLACE DATABASE json_db;
+
+CREATE OR REPLACE TABLE json_tbl
+    (
+    DATA VARIANT
+    
+    );
+// use parse insert to enter json data
+
+INSERT INTO json_db.public.json_tbl (DATA)
+SELECT(PARSE_JSON('{"name": "Jason", "age": 30,"city":"San Jose"}'));
+
+SELECT * FROM json_tbl;
+
+SELECT 
+DATA:name::String As Name_em, 
+DATA: age::INTEGER AS age, 
+DATA: city::STRING As city
+FROM json_tbl;
+
+// now if you have to store data in to sql format in separate table
+
+CREATE OR REPLACE table json_db.public.json_tbl_flatten as
+SELECT 
+DATA:name::String As Name_em, 
+DATA: age::INTEGER AS age, 
+DATA: city::STRING As city
+FROM json_tbl;
+
+SELECT * from json_db.public.json_tbl_flatten;
+// muliple level flattening 
+
+CREATE OR REPLACE TABLE json_tbl1
+    (
+    DATA VARIANT
+    
+    );
+INSERT INTO json_db.public.json_tbl1 (DATA)
+SELECT(PARSE_JSON('{"name": "Jason", "age": 30,"isStudent":TRUE, "address":{"Street": "123 washinton dr", "city": "San Jose", "zip":"954568"}}'));
+
+SELECT * FROM json_db.public.json_tbl1;
+// flattenining of data
+
+CREATE OR REPLACE table json_db.public.json_tbl1_flatten AS
+DATA:name::string As Name_em, 
+DATA :isStudent::boolean as isStudentFlag,
+DATA: age::INTEGER AS age, 
+DATA:address:Street::string as Street_add,
+DATA:address:city::string As city,
+DATA:address:zip::string As zip
+FROM json_tbl1;
+
+SELECT * FROM json_db.public.json_tbl1;
+CREATE OR REPLACE TABLE json_tbl1_flattening AS
+SELECT 
+DATA:name::String As Name_em, 
+DATA :isStudent::boolean as isStudentFlag,
+DATA: age::INTEGER AS age, 
+DATA:address:Street::String as Street_add,
+DATA:address:city::String as city,
+DATA:address:zip::String as zip
+FROM json_db.public.json_tbl1;
+
+SELECT * FROM json_tbl1_flattening;
+
+// Data from Json Array
+CREATE OR REPLACE TABLE json_array_table
+    (
+    DATA VARIANT   
+    );
+// enter the data in to the JSon in arrary
+
+insert into json_array_table(data)
+Select parse_json('{
+"name": "Jason", "age": 30,"isStudent":TRUE, "Hobby":["Dancing","Singing"," painting"]
+}'
+);
+
+SELECT * FROM json_array_table;
+
+SELECT 
+data:name::string as name,
+data:age::Integer as age,
+DATA :isStudent::boolean as isStudentFlag,
+hobbies.value::string as hobbyies
+//DATA:Hobby::String As Hobby
+FROM json_array_table,
+lateral flatten(input =>DATA:Hobby)As Hobbies;
+
+// multiple level hierarcy
+
+CREATE OR REPLACE TABLE json_array_multiple_tab
+    (
+    DATA VARIANT   
+    );
+INSERT INTO json_array_multiple_tab (data)
+SELECT PARSE_JSON('
+{
+    "Student":{
+    "id":1,
+    "info":{
+      "name": "Alice in wonderland",
+       "age": 30
+},
+"Courses":[
+{
+    "Courses_name":"Maths", 
+    "details":{
+    "grade": "A",
+    "Credits": 3
+    }
+},
+{ 
+  "Courses_name":"Physics", 
+    "details":{
+    "grade": "B",
+    "Credits":4
+        }
+      }   
+    ]
+  }
+}
+'); 
+SELECT * FROM json_array_multiple_tab;
+
+SELECT 
+data:Student:id::INTEGER As Student_ID,
+data:Student:info:name:: String As Student_Name,
+data:Student:info:age:: Integer As Student_Age,
+Courses.value:Courses_name::String As Student_Course_name,
+Courses.value:details:Credits::Integer As Student_credit,
+Courses.value:details:grade::String As Student_grade,
+FROM json_array_multiple_tab,
+LATERAL flatten(input=> data:Student:Courses) As Courses
+
+
+// Array of array
+
+CREATE OR REPLACE TABLE json_array_multiple_arrary
+    (
+    DATA VARIANT   
+    );
+INSERT Into json_array_multiple_arrary (data)
+Select PARSE_JSON ('
+{
+  "company": {
+    "department": {
+      "head": "Jane Smith",
+      "name": "Engineering"
+    },
+    "id": 201,
+    "teams": [
+      {
+        "members": [
+          {
+            "name": "Alice Brown",
+            "role": "UI Developer",
+            "skills": [
+              {
+                "experience": 10,
+                "technology": [
+                  "HTML",
+                  "CSS",
+                  "JavaScript",
+                  "React"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Bob Green",
+            "role": "UX Designer",
+            "skills": [
+              {
+                "experience": 7,
+                "technology": [
+                  "Figma",
+                  "Sketch",
+                  "Adobe XD",
+                  "Illustrator"
+                ]
+              }
+            ]
+          }
+        ],
+        "team_name": "Frontend"
+      },
+      {
+        "members": [
+          {
+            "name": "Charlie White",
+            "role": "Backend Engineer",
+            "skills": [
+              {
+                "experience": 15,
+                "technology": [
+                  "Python",
+                  "Django",
+                  "PostgreSQL",
+                  "Redis"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "David Black",
+            "role": "DevOps Engineer",
+            "skills": [
+              {
+                "experience": 10,
+                "technology": [
+                  "AWS",
+                  "Docker",
+                  "Kubernetes",
+                  "Terraform"
+                ]
+              }
+            ]
+          }
+        ],
+        "team_name": "Backend"
+      }
+    ]
+  }
+}');
+Select * FROM json_array_multiple_arrary;
+SELECT 
+data:company:id::integer as company_id,
+data:company:department:name::string as company_department_name,
+data:company:department:head::string as company_department_head,
+teams.value:teams_name::string as company_team_name,
+members.value:name::string as company_team_member_name,
+members.value:role::string as company_team_member_role,
+skills.value:experience::integer as company_team_exp,
+technology.value::string as company_team_member_tecnology,
+FROM json_array_multiple_arrary,
+lateral flatten (input=> data:company:teams)as teams,
+lateral flatten (input=>teams.value:members) as members,
+lateral flatten (input=>members.value:skills) as skills,
+lateral flatten (input=>skills.value:technology)as technology
+
+
+// flattening arrary with multiple jason object
+
+CREATE OR REPLACE TABLE json_array_multiple_jason
+    (
+    DATA VARIANT   
+    );
+    );
+INSERT Into json_array_multiple_jason (data)
+Select PARSE_JSON ('[
+  {
+    "id": 1,
+    "name": "Alice Johnson",
+    "position": "Software Engineer",
+    "department": "IT",
+    "salary": 75000
+  },
+  {
+    "id": 2,
+    "name": "Bob Smith",
+    "position": "Product Manager",
+    "department": "Product",
+    "salary": 85000
+  },
+  {
+    "id": 3,
+    "name": "Carol Lee",
+    "position": "UX Designer",
+    "department": "Design",
+    "salary": 70000
+  }
+]
+');
+select * FROM json_array_multiple_jason;
+
+select
+temp.value:id::integer as temp_id,
+temp.value:department::string as deparment,
+temp.value:name::string as name,
+temp.value:postion::string as position,
+temp.value:salary::integer as salary
+FROM json_array_multiple_jason,
+lateral flatten (input=>data)as temp
+
+// jason in json
+
+CREATE OR REPLACE TABLE json_json_multiple_jason
+    (
+    DATA VARIANT   
+    );
+INSERT Into json_json_multiple_jason (data)
+Select PARSE_JSON ('{
+  "university": {
+    "Faculty of Engineering": {
+      "dean": "Dr. Emily Carter",
+      "departments": {
+        "Computer Science": {
+          "head": "Dr. Alan Turing",
+          "courses": {
+            "Algorithms": {
+              "credits": 4,
+              "enrolled_students": 120
+            },
+            "Machine Learning": {
+              "credits": 3,
+              "enrolled_students": 90
+            }
+          }
+        },
+        "Mechanical Engineering": {
+          "head": "Dr. Grace Hopper",
+          "courses": {
+            "Thermodynamics": {
+              "credits": 4,
+              "enrolled_students": 80
+            },
+            "Fluid Mechanics": {
+              "credits": 3,
+              "enrolled_students": 75
+            }
+          }
+        }
+      },
+      "total_students": 1000,
+      "total_courses": 4
+    },
+    "Faculty of Science": {
+      "dean": "Dr. Carl Sagan",
+      "departments": {
+        "Physics": {
+          "head": "Dr. Richard Feynman",
+          "courses": {
+            "Quantum Mechanics": {
+              "credits": 4,
+              "enrolled_students": 70
+            },
+            "Classical Mechanics": {
+              "credits": 4,
+              "enrolled_students": 80
+            }
+          }
+        },
+        "Biology": {
+          "head": "Dr. Jane Goodall",
+          "courses": {
+            "Genetics": {
+              "credits": 3,
+              "enrolled_students": 100
+            },
+            "Ecology": {
+              "credits": 3,
+              "enrolled_students": 90
+            }
+          }
+        }
+      },
+      "total_students": 700,
+      "total_courses": 4
+    }
+  },
+  "name": "Central University",
+  "total_students": 1700,
+  "total_courses": 8
+}
+')
+SELECT 
+data:name::string as university_name, 
+data:total_courses:: integer as university_total_course,
+data:total_students:: integer as university_total_students,
+university.key:: string as university_faculty_name,
+university.value:dean::string as university_faculty_dean_name,
+university.value:total_courses::integer as university_faculty_total_courses,
+university.value:total_students::integer as university_faculty_total_students,
+departments.key::string as university_faculty_department_name,
+departments.value:head:string as university_faculty_head_name,
+courses.key::string as university_faculty_department_course,
+courses.value:credit::integer as university_faculty_department_credit,
+courses.value:enrolled_students::integer as university_enrolled_students,
+From
+json_json_multiple_jason,
+lateral flatten (input=>data:university)as university,
+lateral flatten (input=>university.value:departments)as departments,
+lateral flatten (input=>departments.value:courses)as courses
